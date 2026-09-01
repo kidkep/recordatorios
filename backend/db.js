@@ -85,6 +85,11 @@ async function initSchemaSqlite(db) {
       await db.run(`ALTER TABLE recordatorios ADD COLUMN email_enviado INTEGER DEFAULT 0`, []);
     } catch (e) { /* ya existe */ }
   }
+  if (!cols.some(c => c.name === 'aviso_minutos')) {
+    try {
+      await db.run(`ALTER TABLE recordatorios ADD COLUMN aviso_minutos INTEGER`, []);
+    } catch (e) { /* ya existe */ }
+  }
   if (!cols.some(c => c.name === 'user_id')) {
     try {
       await db.run(`ALTER TABLE recordatorios ADD COLUMN user_id INTEGER`, []);
@@ -159,6 +164,9 @@ async function initSchemaPostgres(db) {
   // Migración: agregar email_enviado y user_id si no existen (bases viejas)
   try {
     await db.run(`ALTER TABLE recordatorios ADD COLUMN IF NOT EXISTS email_enviado INTEGER DEFAULT 0`, []);
+  } catch (e) { /* noop */ }
+  try {
+    await db.run(`ALTER TABLE recordatorios ADD COLUMN IF NOT EXISTS aviso_minutos INTEGER`, []);
   } catch (e) { /* noop */ }
   try {
     await db.run(`ALTER TABLE recordatorios ADD COLUMN IF NOT EXISTS user_id INTEGER`, []);

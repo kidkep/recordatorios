@@ -12,7 +12,8 @@ function ReminderModal({ reminder, categories, onClose, onSave }) {
     repetir: reminder?.repetir || 'none',
     notificacion_push: reminder ? Boolean(reminder.notificacion_push) : true,
     notificacion_email: reminder ? Boolean(reminder.notificacion_email) : false,
-    email_destino: reminder?.email_destino || ''
+    email_destino: reminder?.email_destino || '',
+    aviso_minutos: reminder?.aviso_minutos || ''
   });
 
   const [saving, setSaving] = useState(false);
@@ -35,6 +36,8 @@ function ReminderModal({ reminder, categories, onClose, onSave }) {
       notificacion_email: form.notificacion_email,
       email_destino: form.notificacion_email ? form.email_destino.trim() : null
     };
+
+    if (form.notificacion_email) payload.aviso_minutos = form.aviso_minutos ? Number(form.aviso_minutos) : null;
 
     if (form.notificacion_email && !form.email_destino.trim()) {
       alert('Ingresa tu email para recibir notificaciones');
@@ -154,6 +157,7 @@ function ReminderModal({ reminder, categories, onClose, onSave }) {
           </div>
 
           {form.notificacion_email && (
+            <>
             <div className="form-group">
               <label>Email de destino</label>
               <input
@@ -163,6 +167,22 @@ function ReminderModal({ reminder, categories, onClose, onSave }) {
                 placeholder="tucorreo@ejemplo.com"
               />
             </div>
+            <div className="form-group">
+              <label>Enviar correo</label>
+              <select
+                value={form.aviso_minutos}
+                onChange={e => updateField('aviso_minutos', e.target.value)}
+              >
+                <option value="">A la hora exacta</option>
+                <option value="5">5 minutos antes</option>
+                <option value="10">10 minutos antes</option>
+                <option value="15">15 minutos antes</option>
+                <option value="30">30 minutos antes</option>
+                <option value="60">1 hora antes</option>
+                <option value="1440">1 día antes</option>
+              </select>
+            </div>
+            </>
           )}
 
           <div className="form-actions">

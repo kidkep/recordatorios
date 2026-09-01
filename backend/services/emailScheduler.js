@@ -165,7 +165,8 @@ function buildReminderEmail(reminder, categoria) {
 
 async function checkDueReminders() {
   const now = Date.now();
-  const fiveMinAgo = now - 5 * 60 * 1000;
+  // Ventana amplia para capturar avisos previos y recordatorios al momento
+  const ventanaInicio = now - 15 * 60 * 1000;
 
   try {
     const reminders = await db.all(`
@@ -176,8 +177,11 @@ async function checkDueReminders() {
         AND r.email_destino IS NOT NULL
         AND r.email_destino != ''
         AND COALESCE(r.email_enviado, 0) = 0
-        AND r.fecha BETWEEN ? AND ?
-    `, [fiveMinAgo, now]);
+        AND (
+          -- Momento de aviso (fecha - aviso_minutos, o fecha si no hay aviso previo)
+          (r.fecha - COALESCE(r.aviso_minutos, 0) * 60000) BETWEEN ? AND ?
+        )
+    `, [ventanaInicio, now]);
 
     if (!reminders) return;
 

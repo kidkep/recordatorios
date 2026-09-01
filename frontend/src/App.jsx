@@ -4,6 +4,7 @@ import { FiBell, FiPlus, FiSettings, FiTrash2, FiEdit2, FiMail, FiUser } from 'r
 import ReminderModal from './components/ReminderModal';
 import CategoryManager from './components/CategoryManager';
 import SettingsModal from './components/SettingsModal';
+import Calendar from './components/Calendar';
 import Login from './components/Login';
 import ProfileModal from './components/ProfileModal';
 import { setupPushSubscription } from './utils/notifications';
@@ -227,6 +228,12 @@ function App() {
             + Gestionar
           </button>
         </div>
+
+        <Calendar
+          reminders={reminders}
+          categories={categories}
+          onSelectDay={(reminder) => { setEditingReminder(reminder); setShowModal(true); }}
+        />
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div className="section-title" style={{ marginBottom: 0 }}>Mis recordatorios</div>
