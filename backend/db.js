@@ -150,6 +150,11 @@ async function seedPostgresOrSqlite(db, type) {
 
 // ---------------- Adaptador PostgreSQL ----------------
 function initPostgres(Pool, url) {
+  const { types } = require('pg');
+
+  // Convertir BIGINT (int8, OID 20) a número, para que fecha/creado_en sean números
+  types.setTypeParser(20, (val) => (val === null ? null : parseInt(val, 10)));
+
   const pool = new Pool({
     connectionString: url,
     ssl: { rejectUnauthorized: false }
@@ -170,11 +175,22 @@ function initPostgres(Pool, url) {
 
   async function run(sql, params = []) {
     params = Array.isArray(params) ? params : [];
-    const c = convertParams(sql, params);
+    let c = convertParams(sql, params);
+    const trimmed = c.sql.trim().toUpperCase();
+
+    // Para INSERT en PostgreSQL, pedir que devuelva el id para poder leer lastID
+    if (trimmed.startsWith('INSERT') && !/RETURNING/i.test(c.sql)) {
+      c.sql = c.sql + ' RETURNING id';
+    }
+
     const client = await pool.connect();
     try {
       const res = await client.query(c.sql, c.params);
-      return { lastID: res.rows && res.rows[0] ? (res.rows[0].id || undefined) : undefined, changes: res.rowCount };
+      let lastID;
+      if (res.rows && res.rows.length) {
+        lastID = res.rows[0].id;
+      }
+      return { lastID, changes: res.rowCount };
     } finally {
       client.release();
     }
