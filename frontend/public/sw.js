@@ -1,4 +1,4 @@
-const CACHE_NAME = 'recordatorios-v1';
+const CACHE_NAME = 'recordatorios-v2';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -27,21 +27,38 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+
+  // Navegaciones: primero intentar red, si falla usar caché (asegura última versión online)
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put('/index.html', clone);
+          });
+          return response;
+        })
+        .catch(() => caches.match('/index.html'))
+    );
+    return;
+  }
+
+  // API: nunca cachear
+  if (event.request.url.includes('/api/')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  // Otros assets: caché primero
   event.respondWith(
     caches.match(event.request).then((response) => {
       return response || fetch(event.request).then((response) => {
-        if (event.request.url.includes('/api/')) {
-          return response;
-        }
         const responseClone = response.clone();
         caches.open(CACHE_NAME).then((cache) => {
           cache.put(event.request, responseClone);
         });
         return response;
-      }).catch(() => {
-        if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
-        }
       });
     })
   );
