@@ -26,6 +26,60 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
+app.get('/api/diagnostico', async (req, res) => {
+  const net = require('net');
+  const dns = require('dns');
+
+  const configVars = {
+    SMTP_HOST: process.env.SMTP_HOST || '(no definido)',
+    SMTP_PORT: process.env.SMTP_PORT || '(no definido)',
+    SMTP_USER: process.env.SMTP_USER || '(no definido)',
+    SMTP_PASS: process.env.SMTP_PASS ? '(definido, oculto)' : '(no definido)',
+    EMAIL_REMITENTE: process.env.EMAIL_REMITENTE || '(no definido)'
+  };
+
+  const host = configVars.SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT) || 587;
+
+  function testConn(host, port) {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => resolve({ ok: false, error: 'Timeout' }), 8000);
+      const socket = net.createConnection({ host, port, timeout: 8000 }, () => {
+        clearTimeout(timeout);
+        socket.destroy();
+        resolve({ ok: true });
+      });
+      socket.on('error', (err) => {
+        clearTimeout(timeout);
+        resolve({ ok: false, error: err.code || err.message });
+      });
+      socket.on('timeout', () => {
+        clearTimeout(timeout);
+        socket.destroy();
+        resolve({ ok: false, error: 'Timeout' });
+      });
+    });
+  }
+
+  const resolucion = await new Promise((resolve) => {
+    dns.lookup(host, (err, address) => {
+      if (err) resolve({ error: err.code || 'DNS error' });
+      else resolve({ address });
+    });
+  });
+
+  const conectividad = await testConn(host, port);
+  const conectividadResend = await testConn('smtp.resend.com', 465);
+
+  res.json({
+    variablesSMTP: configVars,
+    resolucionDNS_host: resolucion,
+    conexionDirecta_al_host: conectividad,
+    conexionDirecta_a_smtpREsend_465: conectividadResend,
+    recomendacion: conectividad.ok ? 'render_puede_conectar_al_host' : 'render_NO_puede_conectar_al_host_timeout'
+  });
+});
+
 const distPath = path.join(__dirname, 'frontend', 'dist');
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
