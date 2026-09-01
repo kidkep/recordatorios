@@ -7,36 +7,30 @@ let schedulerInterval = null;
 // Preferimos la API de Resend (HTTP) porque Render free bloquea SMTP saliente.
 // Si RESEND_API_KEY esta definida, usamos API HTTP; si no, caemos a SMTP.
 
-function getConfig() {
-  return new Promise((resolve, reject) => {
-    db.all('SELECT * FROM configuracion', (err, rows) => {
-      if (err) {
-        return reject(err);
-      }
-      const config = {};
+async function getConfig() {
+  const rows = await db.all('SELECT * FROM configuracion', []);
+  const config = {};
 
-      // Ambientales primero (Render)
-      config.smtp_host = process.env.SMTP_HOST || '';
-      config.smtp_port = process.env.SMTP_PORT || '587';
-      config.smtp_user = process.env.SMTP_USER || '';
-      config.smtp_pass = process.env.SMTP_PASS || '';
-      config.resend_api_key = process.env.RESEND_API_KEY || '';
-      config.email_remitente = process.env.EMAIL_REMITENTE || '';
+  // Ambientales primero (Render)
+  config.smtp_host = process.env.SMTP_HOST || '';
+  config.smtp_port = process.env.SMTP_PORT || '587';
+  config.smtp_user = process.env.SMTP_USER || '';
+  config.smtp_pass = process.env.SMTP_PASS || '';
+  config.resend_api_key = process.env.RESEND_API_KEY || '';
+  config.email_remitente = process.env.EMAIL_REMITENTE || '';
 
-      // Si no hay RESEND_API_KEY pero SMTP_PASS parece una API key de Resend (empieza con re_), usarla
-      if (!config.resend_api_key && config.smtp_pass && config.smtp_pass.startsWith('re_')) {
-        config.resend_api_key = config.smtp_pass;
-      }
+  // Si no hay RESEND_API_KEY pero SMTP_PASS parece una API key de Resend (empieza con re_), usarla
+  if (!config.resend_api_key && config.smtp_pass && config.smtp_pass.startsWith('re_')) {
+    config.resend_api_key = config.smtp_pass;
+  }
 
-      rows.forEach(r => {
-        if (r.valor) {
-          config[r.clave] = r.valor;
-        }
-      });
-
-      resolve(config);
-    });
+  rows.forEach(r => {
+    if (r.valor) {
+      config[r.clave] = r.valor;
+    }
   });
+
+  return config;
 }
 
 function extraerRemitente(emailRemitente) {
@@ -173,17 +167,19 @@ async function checkDueReminders() {
   const now = Date.now();
   const fiveMinAgo = now - 5 * 60 * 1000;
 
-  db.all(`
-    SELECT r.*, c.nombre as categoria_nombre, c.color as categoria_color
-    FROM recordatorios r
-    LEFT JOIN categorias c ON r.categoria_id = c.id
-    WHERE r.notificacion_email = 1
-      AND r.email_destino IS NOT NULL
-      AND r.email_destino != ''
-      AND COALESCE(r.email_enviado, 0) = 0
-      AND r.fecha BETWEEN ? AND ?
-  `, [fiveMinAgo, now], async (err, reminders) => {
-    if (err || !reminders) return;
+  try {
+    const reminders = await db.all(`
+      SELECT r.*, c.nombre as categoria_nombre, c.color as categoria_color
+      FROM recordatorios r
+      LEFT JOIN categorias c ON r.categoria_id = c.id
+      WHERE r.notificacion_email = 1
+        AND r.email_destino IS NOT NULL
+        AND r.email_destino != ''
+        AND COALESCE(r.email_enviado, 0) = 0
+        AND r.fecha BETWEEN ? AND ?
+    `, [fiveMinAgo, now]);
+
+    if (!reminders) return;
 
     for (const reminder of reminders) {
       const categoria = reminder.categoria_nombre ? {
@@ -201,17 +197,18 @@ async function checkDueReminders() {
 
       // Marcar como notificado para evitar envíos duplicados (solo si se envió bien)
       if (enviado) {
-        db.run('UPDATE recordatorios SET email_enviado = 1 WHERE id = ?', [reminder.id]);
-      }
-
-      if (enviado && reminder.repetir && reminder.repetir !== 'none') {
-        scheduleNextOccurrence(reminder);
+        await db.run('UPDATE recordatorios SET email_enviado = 1 WHERE id = ?', [reminder.id]);
+        if (reminder.repetir && reminder.repetir !== 'none') {
+          await scheduleNextOccurrence(reminder);
+        }
       }
     }
-  });
+  } catch (err) {
+    console.error('Error en checkDueReminders:', err.message);
+  }
 }
 
-function scheduleNextOccurrence(reminder) {
+async function scheduleNextOccurrence(reminder) {
   const now = Date.now();
   let nextDate;
 
@@ -235,17 +232,15 @@ function scheduleNextOccurrence(reminder) {
       return;
   }
 
-  db.run(
-    'UPDATE recordatorios SET fecha = ?, email_enviado = 0 WHERE id = ?',
-    [nextDate, reminder.id],
-    (err) => {
-      if (err) {
-        console.error('Error reprogramando recordatorio:', err.message);
-      } else {
-        console.log(`Recordatorio "${reminder.titulo}" reprogramado para ${new Date(nextDate).toLocaleString()}`);
-      }
-    }
-  );
+  try {
+    await db.run(
+      'UPDATE recordatorios SET fecha = ?, email_enviado = 0 WHERE id = ?',
+      [nextDate, reminder.id]
+    );
+    console.log(`Recordatorio "${reminder.titulo}" reprogramado para ${new Date(nextDate).toLocaleString()}`);
+  } catch (err) {
+    console.error('Error reprogramando recordatorio:', err.message);
+  }
 }
 
 function checkAndSchedule(reminderId) {

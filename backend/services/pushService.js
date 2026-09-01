@@ -23,38 +23,23 @@ function getIconUrl() {
   return base ? `${base}/icon-192.png` : '/icon-192.png';
 }
 
-function saveSubscription(subscription) {
-  return new Promise((resolve, reject) => {
-    db.run(
-      'INSERT OR REPLACE INTO suscripciones (endpoint, keys) VALUES (?, ?)',
-      [subscription.endpoint, JSON.stringify(subscription.keys)],
-      (err) => {
-        if (err) return reject(err);
-        resolve();
-      }
-    );
-  });
+async function saveSubscription(subscription) {
+  // Compatible con SQLite y PostgreSQL (replace = borrar + insertar)
+  await db.run('DELETE FROM suscripciones WHERE endpoint = ?', [subscription.endpoint]);
+  await db.run('INSERT INTO suscripciones (endpoint, keys) VALUES (?, ?)',
+    [subscription.endpoint, JSON.stringify(subscription.keys)]);
 }
 
-function removeSubscription(endpoint) {
-  return new Promise((resolve, reject) => {
-    db.run('DELETE FROM suscripciones WHERE endpoint = ?', [endpoint], (err) => {
-      if (err) return reject(err);
-      resolve();
-    });
-  });
+async function removeSubscription(endpoint) {
+  await db.run('DELETE FROM suscripciones WHERE endpoint = ?', [endpoint]);
 }
 
-function getAllSubscriptions() {
-  return new Promise((resolve, reject) => {
-    db.all('SELECT * FROM suscripciones', (err, rows) => {
-      if (err) return reject(err);
-      resolve(rows.map(r => ({
-        endpoint: r.endpoint,
-        keys: JSON.parse(r.keys)
-      })));
-    });
-  });
+async function getAllSubscriptions() {
+  const rows = await db.all('SELECT * FROM suscripciones', []);
+  return rows.map(r => ({
+    endpoint: r.endpoint,
+    keys: JSON.parse(r.keys)
+  }));
 }
 
 async function sendPushNotification(titulo, body) {
@@ -94,24 +79,22 @@ function reprocessPushReminder(reminder) {
   }
 }
 
-function checkAndSendDuePush() {
+async function checkAndSendDuePush() {
   const now = Date.now();
-  db.all(
-    'SELECT * FROM recordatorios WHERE notificacion_push = 1',
-    [],
-    async (err, reminders) => {
-      if (err) return;
-      for (const rem of reminders) {
-        const diff = now - rem.fecha;
-        if (diff >= 0 && diff <= 15000) {
-          await sendPushNotification(
-            `🔔 ${rem.titulo}`,
-            (rem.descripcion || '¡Es hora de cumplir con tu recordatorio!')
-          );
-        }
+  try {
+    const reminders = await db.all('SELECT * FROM recordatorios WHERE notificacion_push = 1', []);
+    for (const rem of reminders) {
+      const diff = now - rem.fecha;
+      if (diff >= 0 && diff <= 15000) {
+        await sendPushNotification(
+          `🔔 ${rem.titulo}`,
+          (rem.descripcion || '¡Es hora de cumplir con tu recordatorio!')
+        );
       }
     }
-  );
+  } catch (err) {
+    console.error('Error en checkAndSendDuePush:', err.message);
+  }
 }
 
 module.exports = {

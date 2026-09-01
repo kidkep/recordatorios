@@ -26,10 +26,19 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
-emailScheduler.start();
+async function init() {
+  try {
+    await db.initSchema();
+    console.log(`Conectado a la base de datos (${db._type})`);
+    emailScheduler.start();
+    setInterval(() => pushService.checkAndSendDuePush(), 10000);
+    app.listen(PORT, () => {
+      console.log(`Servidor corriendo en http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error('Error inicializando la BD:', err.message);
+    process.exit(1);
+  }
+}
 
-setInterval(() => pushService.checkAndSendDuePush(), 10000);
-
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
-});
+init();

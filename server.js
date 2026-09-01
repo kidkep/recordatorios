@@ -35,7 +35,10 @@ app.get('/api/diagnostico', async (req, res) => {
     SMTP_PORT: process.env.SMTP_PORT || '(no definido)',
     SMTP_USER: process.env.SMTP_USER || '(no definido)',
     SMTP_PASS: process.env.SMTP_PASS ? '(definido, oculto)' : '(no definido)',
-    EMAIL_REMITENTE: process.env.EMAIL_REMITENTE || '(no definido)'
+    EMAIL_REMITENTE: process.env.EMAIL_REMITENTE || '(no definido)',
+    RESEND_API_KEY: process.env.RESEND_API_KEY ? '(definido, oculto)' : '(no definido)',
+    DATABASE_URL: process.env.DATABASE_URL ? '(definido)' : '(no definido)',
+    TIPO_BD: db._type || 'desconocido'
   };
 
   const host = configVars.SMTP_HOST;
@@ -90,9 +93,19 @@ if (fs.existsSync(distPath)) {
   console.log('Sirviendo frontend desde frontend/dist');
 }
 
-emailScheduler.start();
-setInterval(() => pushService.checkAndSendDuePush(), 10000);
+async function init() {
+  try {
+    await db.initSchema();
+    console.log(`Conectado a la base de datos (${db._type})`);
+    emailScheduler.start();
+    setInterval(() => pushService.checkAndSendDuePush(), 10000);
+    app.listen(PORT, () => {
+      console.log(`Servidor corriendo en puerto ${PORT}`);
+    });
+  } catch (err) {
+    console.error('Error inicializando la BD:', err.message);
+    process.exit(1);
+  }
+}
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en puerto ${PORT}`);
-});
+init();
