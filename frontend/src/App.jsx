@@ -46,6 +46,11 @@ function App() {
     setCategories([]);
   };
 
+  const handleProfileUpdate = (nuevoUsuario) => {
+    localStorage.setItem('usuario', JSON.stringify(nuevoUsuario));
+    setUsuario(nuevoUsuario);
+  };
+
   const loadData = async () => {
     try {
       const [remindersRes, categoriesRes] = await Promise.all([
@@ -316,6 +321,7 @@ function App() {
         <ReminderModal
           reminder={editingReminder}
           categories={categories}
+          userEmail={usuario?.email || ''}
           onClose={() => setShowModal(false)}
           onSave={() => { setShowModal(false); loadData(); }}
         />
@@ -340,6 +346,7 @@ function App() {
           usuario={usuario}
           onClose={() => setShowProfile(false)}
           onLogout={handleLogout}
+          onProfileUpdate={handleProfileUpdate}
         />
       )}
       </>

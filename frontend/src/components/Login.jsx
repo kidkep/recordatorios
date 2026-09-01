@@ -4,7 +4,7 @@ import API from '../api';
 
 function Login({ onLogin }) {
   const [modo, setModo] = useState('login');
-  const [form, setForm] = useState({ nombre: '', usuario: '', contrasena: '' });
+  const [form, setForm] = useState({ nombre: '', usuario: '', contrasena: '', email: '' });
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
 
@@ -25,7 +25,8 @@ function Login({ onLogin }) {
         const res = await axios.post(`${API}/auth/register`, {
           nombre: form.nombre.trim(),
           usuario: form.usuario.trim(),
-          contrasena: form.contrasena
+          contrasena: form.contrasena,
+          email: form.email.trim()
         });
         onLogin(res.data.token, res.data.usuario);
       }
@@ -60,6 +61,7 @@ function Login({ onLogin }) {
 
         <form onSubmit={handleSubmit}>
           {modo === 'register' && (
+            <>
             <div className="form-group">
               <label>Nombre</label>
               <input
@@ -70,6 +72,17 @@ function Login({ onLogin }) {
                 required
               />
             </div>
+            <div className="form-group">
+              <label>Email (para recibir los recordatorios)</label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={e => update('email', e.target.value)}
+                placeholder="tucorreo@ejemplo.com"
+                required
+              />
+            </div>
+            </>
           )}
 
           <div className="form-group">

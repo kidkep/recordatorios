@@ -12,7 +12,7 @@ const CATEGORIAS_DEFECTO = [
 ];
 
 function usuarioPublico(u) {
-  return { id: u.id, nombre: u.nombre, usuario: u.usuario, rol: u.rol };
+  return { id: u.id, nombre: u.nombre, usuario: u.usuario, rol: u.rol, email: u.email || '' };
 }
 
 async function crearCategoriasDefecto(userId) {
@@ -30,7 +30,7 @@ async function crearCategoriasDefecto(userId) {
 
 // POST /api/auth/register - Crear cuenta
 router.post('/register', async (req, res) => {
-  const { nombre, usuario, contrasena } = req.body;
+  const { nombre, usuario, contrasena, email } = req.body;
   if (!usuario || !contrasena || !nombre) {
     return res.status(400).json({ error: 'Nombre, usuario y contraseña son requeridos' });
   }
@@ -44,8 +44,8 @@ router.post('/register', async (req, res) => {
     }
     const hash = bcrypt.hashSync(contrasena, 10);
     const result = await db.run(
-      'INSERT INTO usuarios (nombre, usuario, contrasena, rol) VALUES (?, ?, ?, ?)',
-      [nombre, usuario, hash, 'user']
+      'INSERT INTO usuarios (nombre, usuario, contrasena, rol, email) VALUES (?, ?, ?, ?, ?)',
+      [nombre, usuario, hash, 'user', email || null]
     );
     await crearCategoriasDefecto(result.lastID);
     const nuevo = await db.get('SELECT * FROM usuarios WHERE id = ?', [result.lastID]);
@@ -107,9 +107,27 @@ router.post('/cambiar-clave', autenticar, async (req, res) => {
 // GET /api/auth/me - Ver el usuario autenticado actual
 router.get('/me', autenticar, async (req, res) => {
   try {
-    const user = await db.get('SELECT id, nombre, usuario, rol FROM usuarios WHERE id = ?', [req.usuario.id]);
+    const user = await db.get('SELECT id, nombre, usuario, rol, email FROM usuarios WHERE id = ?', [req.usuario.id]);
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
     res.json({ usuario: user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/auth/perfil - Actualizar nombre y/o email del perfil
+router.put('/perfil', autenticar, async (req, res) => {
+  const { nombre, email } = req.body;
+  try {
+    const user = await db.get('SELECT * FROM usuarios WHERE id = ?', [req.usuario.id]);
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    const nuevoNombre = nombre !== undefined ? nombre : user.nombre;
+    const nuevoEmail = email !== undefined ? (email || null) : user.email;
+
+    await db.run('UPDATE usuarios SET nombre = ?, email = ? WHERE id = ?', [nuevoNombre, nuevoEmail, user.id]);
+    const actualizado = await db.get('SELECT id, nombre, usuario, rol, email FROM usuarios WHERE id = ?', [user.id]);
+    res.json({ usuario: actualizado });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -3,7 +3,7 @@ import axios from 'axios';
 import { scheduleBrowserNotification } from '../utils/notifications';
 import API from '../api';
 
-function ReminderModal({ reminder, categories, onClose, onSave }) {
+function ReminderModal({ reminder, categories, onClose, onSave, userEmail }) {
   const [form, setForm] = useState({
     titulo: reminder?.titulo || '',
     descripcion: reminder?.descripcion || '',
@@ -12,7 +12,7 @@ function ReminderModal({ reminder, categories, onClose, onSave }) {
     repetir: reminder?.repetir || 'none',
     notificacion_push: reminder ? Boolean(reminder.notificacion_push) : true,
     notificacion_email: reminder ? Boolean(reminder.notificacion_email) : false,
-    email_destino: reminder?.email_destino || '',
+    email_destino: reminder?.email_destino || userEmail || '',
     aviso_minutos: reminder?.aviso_minutos || ''
   });
 

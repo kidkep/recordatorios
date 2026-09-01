@@ -74,9 +74,17 @@ async function initSchemaSqlite(db) {
       usuario TEXT NOT NULL UNIQUE,
       contrasena TEXT NOT NULL,
       rol TEXT DEFAULT 'user',
+      email TEXT,
       fecha_creacion TEXT DEFAULT (datetime('now'))
     )
   `);
+
+  const userCols = await db.all(`PRAGMA table_info(usuarios)`, []);
+  if (!userCols.some(c => c.name === 'email')) {
+    try {
+      await db.run(`ALTER TABLE usuarios ADD COLUMN email TEXT`, []);
+    } catch (e) { /* ya existe */ }
+  }
 
   // Migración: agregar email_enviado si no existe (versiones viejas)
   const cols = await db.all(`PRAGMA table_info(recordatorios)`, []);
@@ -157,9 +165,14 @@ async function initSchemaPostgres(db) {
       usuario TEXT NOT NULL UNIQUE,
       contrasena TEXT NOT NULL,
       rol TEXT DEFAULT 'user',
+      email TEXT,
       fecha_creacion TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
     )
   `);
+
+  try {
+    await db.run(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email TEXT`, []);
+  } catch (e) { /* noop */ }
 
   // Migración: agregar email_enviado y user_id si no existen (bases viejas)
   try {

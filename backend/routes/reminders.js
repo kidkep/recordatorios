@@ -25,6 +25,19 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   const { titulo, descripcion, categoria_id, fecha, repetir, notificacion_push, notificacion_email, email_destino, aviso_minutos } = req.body;
 
+  let emailDestinoFinal = null;
+  if (notificacion_email) {
+    if (email_destino && String(email_destino).trim()) {
+      emailDestinoFinal = email_destino.trim();
+    } else {
+      const usuario = await db.get('SELECT email FROM usuarios WHERE id = ?', [req.usuario.id]);
+      emailDestinoFinal = usuario?.email || null;
+    }
+    if (!emailDestinoFinal) {
+      return res.status(400).json({ error: 'No se puede enviar por correo: agrega tu email en tu perfil' });
+    }
+  }
+
   if (!titulo || !fecha) {
     return res.status(400).json({ error: 'Título y fecha son requeridos' });
   }
@@ -33,7 +46,7 @@ router.post('/', async (req, res) => {
     const result = await db.run(`
       INSERT INTO recordatorios (titulo, descripcion, categoria_id, fecha, repetir, notificacion_push, notificacion_email, email_destino, aviso_minutos, user_id)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [titulo, descripcion, categoria_id, fecha, repetir, notificacion_push ? 1 : 0, notificacion_email ? 1 : 0, email_destino, aviso_minutos || null, req.usuario.id]);
+    `, [titulo, descripcion, categoria_id, fecha, repetir, notificacion_push ? 1 : 0, notificacion_email ? 1 : 0, emailDestinoFinal, aviso_minutos || null, req.usuario.id]);
 
     const id = result.lastID;
     const row = await db.get('SELECT * FROM recordatorios WHERE id = ? AND user_id = ?', [id, req.usuario.id]);
@@ -47,12 +60,22 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const { titulo, descripcion, categoria_id, fecha, repetir, notificacion_push, notificacion_email, email_destino, aviso_minutos } = req.body;
 
+  let emailDestinoFinal = null;
+  if (notificacion_email) {
+    if (email_destino && String(email_destino).trim()) {
+      emailDestinoFinal = email_destino.trim();
+    } else {
+      const usuario = await db.get('SELECT email FROM usuarios WHERE id = ?', [req.usuario.id]);
+      emailDestinoFinal = usuario?.email || null;
+    }
+  }
+
   try {
     const result = await db.run(`
       UPDATE recordatorios
       SET titulo = ?, descripcion = ?, categoria_id = ?, fecha = ?, repetir = ?, notificacion_push = ?, notificacion_email = ?, email_destino = ?, aviso_minutos = ?, email_enviado = 0
       WHERE id = ? AND user_id = ?
-    `, [titulo, descripcion, categoria_id, fecha, repetir, notificacion_push ? 1 : 0, notificacion_email ? 1 : 0, email_destino, aviso_minutos || null, req.params.id, req.usuario.id]);
+    `, [titulo, descripcion, categoria_id, fecha, repetir, notificacion_push ? 1 : 0, notificacion_email ? 1 : 0, emailDestinoFinal, aviso_minutos || null, req.params.id, req.usuario.id]);
 
     if (result.changes === 0) {
       return res.status(404).json({ error: 'Recordatorio no encontrado' });
