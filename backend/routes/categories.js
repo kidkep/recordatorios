@@ -22,6 +22,13 @@ router.post('/', async (req, res) => {
     const row = await db.get('SELECT * FROM categorias WHERE id = ?', [result.lastID]);
     res.status(201).json(row);
   } catch (err) {
+    // Detectar nombre duplicado (código 23505 en PostgreSQL / UNIQUE constraint en SQLite)
+    const esDuplicado = (err.code === '23505') ||
+      /duplicate/i.test(err.message) ||
+      /UNIQUE constraint failed/i.test(err.message);
+    if (esDuplicado) {
+      return res.status(409).json({ error: `Ya existe una categoría llamada "${nombre}"` });
+    }
     res.status(500).json({ error: err.message });
   }
 });
