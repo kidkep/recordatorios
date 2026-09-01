@@ -1,7 +1,11 @@
 const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const db = require('../db');
 
 let schedulerInterval = null;
+
+// Preferimos la API de Resend (HTTP) porque Render free bloquea SMTP saliente.
+// Si RESEND_API_KEY esta definida, usamos API HTTP; si no, caemos a SMTP.
 
 function getConfig() {
   return new Promise((resolve, reject) => {
@@ -11,11 +15,18 @@ function getConfig() {
       }
       const config = {};
 
+      // Ambientales primero (Render)
       config.smtp_host = process.env.SMTP_HOST || '';
       config.smtp_port = process.env.SMTP_PORT || '587';
       config.smtp_user = process.env.SMTP_USER || '';
       config.smtp_pass = process.env.SMTP_PASS || '';
+      config.resend_api_key = process.env.RESEND_API_KEY || '';
       config.email_remitente = process.env.EMAIL_REMITENTE || '';
+
+      // Si no hay RESEND_API_KEY pero SMTP_PASS parece una API key de Resend (empieza con re_), usarla
+      if (!config.resend_api_key && config.smtp_pass && config.smtp_pass.startsWith('re_')) {
+        config.resend_api_key = config.smtp_pass;
+      }
 
       rows.forEach(r => {
         if (r.valor) {
@@ -28,54 +39,90 @@ function getConfig() {
   });
 }
 
-async function createTransporter() {
-  try {
-    const config = await getConfig();
-    if (!config.smtp_host || !config.smtp_user || !config.smtp_pass) {
-      return null;
-    }
-    const port = parseInt(config.smtp_port) || 587;
-    const secure = port === 465;
-    return nodemailer.createTransport({
-      host: config.smtp_host,
-      port: port,
-      secure: secure,
-      requireTLS: !secure && (config.smtp_host || '').toLowerCase().includes('gmail'),
-      connectionTimeout: 30000,
-      greetingTimeout: 30000,
-      socketTimeout: 30000,
-      auth: {
-        user: config.smtp_user,
-        pass: config.smtp_pass
-      },
-      tls: secure ? {} : { rejectUnauthorized: false }
-    });
-  } catch (err) {
-    console.error('Error creando transporter:', err.message);
-    return null;
+function extraerRemitente(emailRemitente) {
+  // Acepta "Nombre <correo@x.com>" o "correo@x.com"
+  if (!emailRemitente) return { nombre: '', email: '' };
+  const match = emailRemitente.match(/^([^<]*)<([^>]+)>/);
+  if (match) {
+    return { nombre: match[1].trim(), email: match[2].trim() };
+  }
+  return { nombre: '', email: emailRemitente.trim() };
+}
+
+async function enviarConResend(config, to, subject, text, html) {
+  const resend = new Resend(config.resend_api_key);
+  const remitente = extraerRemitente(config.email_remitente || config.smtp_user);
+  const from = remitente.nombre
+    ? `${remitente.nombre} <${remitente.email}>`
+    : remitente.email;
+
+  const { error } = await resend.emails.send({
+    from,
+    to: [to],
+    subject,
+    html: html || text
+  });
+
+  if (error) {
+    throw new Error(error.message || 'Error API Resend');
   }
 }
 
+async function enviarConSMTP(config, to, subject, text, html) {
+  const port = parseInt(config.smtp_port) || 587;
+  const secure = port === 465;
+  const transporter = nodemailer.createTransport({
+    host: config.smtp_host,
+    port,
+    secure,
+    requireTLS: !secure && (config.smtp_host || '').toLowerCase().includes('gmail'),
+    connectionTimeout: 30000,
+    greetingTimeout: 30000,
+    socketTimeout: 30000,
+    auth: {
+      user: config.smtp_user,
+      pass: config.smtp_pass
+    },
+    tls: secure ? {} : { rejectUnauthorized: false }
+  });
+
+  await transporter.sendMail({
+    from: config.email_remitente || config.smtp_user,
+    to,
+    subject,
+    text,
+    html
+  });
+}
+
 async function sendEmail(to, subject, text, html) {
+  let config;
+  try {
+    config = await getConfig();
+  } catch (err) {
+    console.error('Error leyendo config:', err.message);
+    return false;
+  }
+
+  const usarResend = !!(config.resend_api_key);
+
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const transporter = await createTransporter();
-      if (!transporter) {
-        console.log('Email no configurado, omitiendo envío');
-        return false;
+      if (usarResend) {
+        await enviarConResend(config, to, subject, text, html);
+        console.log(`[Resend] Email enviado a ${to} - "${subject}"`);
+      } else {
+        if (!config.smtp_host || !config.smtp_user || !config.smtp_pass) {
+          console.log('Email no configurado (ni Resend ni SMTP), omitiendo envío');
+          return false;
+        }
+        await enviarConSMTP(config, to, subject, text, html);
+        console.log(`Email enviado a ${to} - "${subject}"`);
       }
-      const config = await getConfig();
-      await transporter.sendMail({
-        from: config.email_remitente || config.smtp_user,
-        to,
-        subject,
-        text,
-        html
-      });
-      console.log(`Email enviado a ${to} - "${subject}"`);
       return true;
     } catch (err) {
-      console.error(`Error enviando email (intento ${attempt}/3): ${err.message}`);
+      const modo = usarResend ? 'Resend' : 'SMTP';
+      console.error(`Error enviando email via ${modo} (intento ${attempt}/3): ${err.message}`);
       if (attempt < 3) {
         await new Promise(r => setTimeout(r, attempt * 5000));
       }
@@ -115,9 +162,6 @@ function buildReminderEmail(reminder, categoria) {
         <p style="margin:8px 0;color:#374151;">📅 <strong>Fecha:</strong> ${fechaStr}</p>
         <p style="margin:8px 0;color:#374151;"><strong>Categoría:</strong> <span style="color:${catColor};">${catName}</span></p>
         ${repetirTxt}
-        <div style="margin-top:20px;text-align:center;">
-          <a href="${process.env.APP_URL || ''}" style="background:#4F46E5;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Ver en la app</a>
-        </div>
       </div>
     </div>
   `;
@@ -162,8 +206,8 @@ async function checkDueReminders() {
 }
 
 function scheduleNextOccurrence(reminder) {
-  let nextDate;
   const now = Date.now();
+  let nextDate;
 
   switch (reminder.repetir) {
     case 'diario':
@@ -212,7 +256,7 @@ function checkAndSchedule(reminderId) {
 function start() {
   checkAndSchedule();
   setInterval(() => checkDueReminders(), 30000);
-  console.log('Email scheduler iniciado');
+  console.log('Email scheduler iniciado (Resend API si esta disponible)');
 }
 
 module.exports = { start, sendEmail, checkAndSchedule };
