@@ -26,6 +26,7 @@ function App() {
         axios.get(`${API}/categories`)
       ]);
       setReminders(remindersRes.data);
+      setCategories(categoriesRes.data);
       checkDueNotifications(remindersRes.data);
     } catch (err) {
       console.error('Error cargando datos:', err);
