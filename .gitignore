@@ -7,3 +7,4 @@ dist/
 .env
 .env.local
 backend/recordatorios.db
+backend/test-email.cjs
