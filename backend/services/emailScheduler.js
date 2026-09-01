@@ -34,14 +34,21 @@ async function createTransporter() {
     if (!config.smtp_host || !config.smtp_user || !config.smtp_pass) {
       return null;
     }
+    const port = parseInt(config.smtp_port) || 587;
+    const secure = port === 465;
     return nodemailer.createTransport({
       host: config.smtp_host,
-      port: parseInt(config.smtp_port) || 587,
-      secure: (parseInt(config.smtp_port) || 587) === 465,
+      port: port,
+      secure: secure,
+      requireTLS: !secure && (config.smtp_host || '').toLowerCase().includes('gmail'),
+      connectionTimeout: 30000,
+      greetingTimeout: 30000,
+      socketTimeout: 30000,
       auth: {
         user: config.smtp_user,
         pass: config.smtp_pass
-      }
+      },
+      tls: secure ? {} : { rejectUnauthorized: false }
     });
   } catch (err) {
     console.error('Error creando transporter:', err.message);
@@ -50,26 +57,31 @@ async function createTransporter() {
 }
 
 async function sendEmail(to, subject, text, html) {
-  try {
-    const transporter = await createTransporter();
-    if (!transporter) {
-      console.log('Email no configurado, omitiendo envío');
-      return false;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const transporter = await createTransporter();
+      if (!transporter) {
+        console.log('Email no configurado, omitiendo envío');
+        return false;
+      }
+      const config = await getConfig();
+      await transporter.sendMail({
+        from: config.email_remitente || config.smtp_user,
+        to,
+        subject,
+        text,
+        html
+      });
+      console.log(`Email enviado a ${to} - "${subject}"`);
+      return true;
+    } catch (err) {
+      console.error(`Error enviando email (intento ${attempt}/3): ${err.message}`);
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, attempt * 5000));
+      }
     }
-    const config = await getConfig();
-    await transporter.sendMail({
-      from: config.email_remitente || config.smtp_user,
-      to,
-      subject,
-      text,
-      html
-    });
-    console.log(`Email enviado a ${to} - "${subject}"`);
-    return true;
-  } catch (err) {
-    console.error('Error enviando email:', err.message);
-    return false;
   }
+  return false;
 }
 
 function buildReminderEmail(reminder, categoria) {
