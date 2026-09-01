@@ -180,6 +180,7 @@ async function checkDueReminders() {
     WHERE r.notificacion_email = 1
       AND r.email_destino IS NOT NULL
       AND r.email_destino != ''
+      AND COALESCE(r.email_enviado, 0) = 0
       AND r.fecha BETWEEN ? AND ?
   `, [fiveMinAgo, now], async (err, reminders) => {
     if (err || !reminders) return;
@@ -191,14 +192,19 @@ async function checkDueReminders() {
       } : null;
 
       const { text, html } = buildReminderEmail(reminder, categoria);
-      await sendEmail(
+      const enviado = await sendEmail(
         reminder.email_destino,
         `🔔 Recordatorio: ${reminder.titulo}`,
         text,
         html
       );
 
-      if (reminder.repetir && reminder.repetir !== 'none') {
+      // Marcar como notificado para evitar envíos duplicados (solo si se envió bien)
+      if (enviado) {
+        db.run('UPDATE recordatorios SET email_enviado = 1 WHERE id = ?', [reminder.id]);
+      }
+
+      if (enviado && reminder.repetir && reminder.repetir !== 'none') {
         scheduleNextOccurrence(reminder);
       }
     }
@@ -230,7 +236,7 @@ function scheduleNextOccurrence(reminder) {
   }
 
   db.run(
-    'UPDATE recordatorios SET fecha = ? WHERE id = ?',
+    'UPDATE recordatorios SET fecha = ?, email_enviado = 0 WHERE id = ?',
     [nextDate, reminder.id],
     (err) => {
       if (err) {

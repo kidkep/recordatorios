@@ -39,6 +39,21 @@ function initTables() {
     )
   `);
 
+  // Migración: agregar columna email_enviado si no existe (para evitar envíos duplicados)
+  db.get(`PRAGMA table_info(recordatorios)`, (err, cols) => {
+    if (err) return;
+    db.all(`PRAGMA table_info(recordatorios)`, (err, cols) => {
+      if (err) return;
+      const tiene = cols.some(c => c.name === 'email_enviado');
+      if (!tiene) {
+        db.run(`ALTER TABLE recordatorios ADD COLUMN email_enviado INTEGER DEFAULT 0`, (err) => {
+          if (err) console.error('Error agregando email_enviado:', err.message);
+          else console.log('Columna email_enviado agregada');
+        });
+      }
+    });
+  });
+
   db.run(`
     CREATE TABLE IF NOT EXISTS configuracion (
       clave TEXT PRIMARY KEY,
