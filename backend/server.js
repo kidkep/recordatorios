@@ -6,6 +6,7 @@ const reminderRoutes = require('./routes/reminders');
 const categoryRoutes = require('./routes/categories');
 const emailRoutes = require('./routes/email');
 const pushRoutes = require('./routes/push');
+const authRoutes = require('./routes/auth');
 const emailScheduler = require('./services/emailScheduler');
 const pushService = require('./services/pushService');
 
@@ -15,6 +16,7 @@ const PORT = process.env.PORT || 4000;
 app.use(cors());
 app.use(express.json());
 
+app.use('/api/auth', authRoutes);
 app.use('/api/reminders', reminderRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/email', emailRoutes);

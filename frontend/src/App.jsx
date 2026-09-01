@@ -1,13 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { FiBell, FiPlus, FiSettings, FiTrash2, FiEdit2, FiMail } from 'react-icons/fi';
+import { FiBell, FiPlus, FiSettings, FiTrash2, FiEdit2, FiMail, FiUser } from 'react-icons/fi';
 import ReminderModal from './components/ReminderModal';
 import CategoryManager from './components/CategoryManager';
 import SettingsModal from './components/SettingsModal';
+import Login from './components/Login';
+import ProfileModal from './components/ProfileModal';
 import { setupPushSubscription } from './utils/notifications';
 import API from './api';
 
 function App() {
+  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [usuario, setUsuario] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('usuario') || 'null');
+    } catch { return null; }
+  });
+  const [showProfile, setShowProfile] = useState(false);
   const [reminders, setReminders] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -19,6 +28,23 @@ function App() {
   const [permissionRequested, setPermissionRequested] = useState(false);
   const firedReminders = useRef(new Set());
 
+  const handleLogin = (nuevoToken, nuevoUsuario) => {
+    localStorage.setItem('token', nuevoToken);
+    localStorage.setItem('usuario', JSON.stringify(nuevoUsuario));
+    setToken(nuevoToken);
+    setUsuario(nuevoUsuario);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('usuario');
+    setToken(null);
+    setUsuario(null);
+    setShowProfile(false);
+    setReminders([]);
+    setCategories([]);
+  };
+
   const loadData = async () => {
     try {
       const [remindersRes, categoriesRes] = await Promise.all([
@@ -29,6 +55,9 @@ function App() {
       setCategories(categoriesRes.data);
       checkDueNotifications(remindersRes.data);
     } catch (err) {
+      if (err.response?.status === 401) {
+        handleLogout();
+      }
       console.error('Error cargando datos:', err);
     } finally {
       setLoading(false);
@@ -60,10 +89,11 @@ function App() {
   };
 
   useEffect(() => {
+    if (!token) { setLoading(false); return; }
     loadData();
     const interval = setInterval(loadData, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [token]);
 
   const requestNotificationPermission = async () => {
     if (!('Notification' in window)) return;
@@ -126,9 +156,16 @@ function App() {
 
   return (
     <div className="app">
+      {!token ? (
+        <Login onLogin={handleLogin} />
+      ) : (
+      <>
       <div className="topbar">
         <h1><FiBell /> Recordatorios</h1>
         <div className="topbar-actions">
+          <button className="btn-top" onClick={() => setShowProfile(true)} title="Mi cuenta">
+            <FiUser />
+          </button>
           <button className="btn-top" onClick={() => setShowSettings(true)}>
             <FiSettings />
           </button>
@@ -289,6 +326,16 @@ function App() {
         <SettingsModal
           onClose={() => setShowSettings(false)}
         />
+      )}
+
+      {showProfile && (
+        <ProfileModal
+          usuario={usuario}
+          onClose={() => setShowProfile(false)}
+          onLogout={handleLogout}
+        />
+      )}
+      </>
       )}
     </div>
   );

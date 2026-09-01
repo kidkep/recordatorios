@@ -67,11 +67,33 @@ async function initSchemaSqlite(db) {
     )
   `);
 
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS usuarios (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nombre TEXT NOT NULL,
+      usuario TEXT NOT NULL UNIQUE,
+      contrasena TEXT NOT NULL,
+      rol TEXT DEFAULT 'user',
+      fecha_creacion TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   // Migración: agregar email_enviado si no existe (versiones viejas)
   const cols = await db.all(`PRAGMA table_info(recordatorios)`, []);
   if (!cols.some(c => c.name === 'email_enviado')) {
     try {
       await db.run(`ALTER TABLE recordatorios ADD COLUMN email_enviado INTEGER DEFAULT 0`, []);
+    } catch (e) { /* ya existe */ }
+  }
+  if (!cols.some(c => c.name === 'user_id')) {
+    try {
+      await db.run(`ALTER TABLE recordatorios ADD COLUMN user_id INTEGER`, []);
+    } catch (e) { /* ya existe */ }
+  }
+  const catCols = await db.all(`PRAGMA table_info(categorias)`, []);
+  if (!catCols.some(c => c.name === 'user_id')) {
+    try {
+      await db.run(`ALTER TABLE categorias ADD COLUMN user_id INTEGER`, []);
     } catch (e) { /* ya existe */ }
   }
 
@@ -123,9 +145,35 @@ async function initSchemaPostgres(db) {
     )
   `);
 
-  // Migración: agregar email_enviado si no existe (bases viejas)
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS usuarios (
+      id SERIAL PRIMARY KEY,
+      nombre TEXT NOT NULL,
+      usuario TEXT NOT NULL UNIQUE,
+      contrasena TEXT NOT NULL,
+      rol TEXT DEFAULT 'user',
+      fecha_creacion TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
+    )
+  `);
+
+  // Migración: agregar email_enviado y user_id si no existen (bases viejas)
   try {
     await db.run(`ALTER TABLE recordatorios ADD COLUMN IF NOT EXISTS email_enviado INTEGER DEFAULT 0`, []);
+  } catch (e) { /* noop */ }
+  try {
+    await db.run(`ALTER TABLE recordatorios ADD COLUMN IF NOT EXISTS user_id INTEGER`, []);
+  } catch (e) { /* noop */ }
+  try {
+    await db.run(`ALTER TABLE categorias ADD COLUMN IF NOT EXISTS user_id INTEGER`, []);
+  } catch (e) { /* noop */ }
+
+  // Con multi-usuario, la unicidad de nombre de categoría debe ser por (user_id, nombre)
+  // Quitar la restricción UNIQUE global de categorias.nombre si existe
+  try {
+    await db.run(`ALTER TABLE categorias DROP CONSTRAINT IF EXISTS categorias_nombre_key`, []);
+  } catch (e) { /* noop */ }
+  try {
+    await db.run(`ALTER TABLE categorias DROP CONSTRAINT IF EXISTS categorias_nombre_unique`, []);
   } catch (e) { /* noop */ }
 
   await seedPostgresOrSqlite(db, 'postgres');

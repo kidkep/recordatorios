@@ -14,9 +14,11 @@ const reminderRoutes = require('./backend/routes/reminders');
 const categoryRoutes = require('./backend/routes/categories');
 const emailRoutes = require('./backend/routes/email');
 const pushRoutes = require('./backend/routes/push');
+const authRoutes = require('./backend/routes/auth');
 const emailScheduler = require('./backend/services/emailScheduler');
 const pushService = require('./backend/services/pushService');
 
+app.use('/api/auth', authRoutes);
 app.use('/api/reminders', reminderRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/email', emailRoutes);
